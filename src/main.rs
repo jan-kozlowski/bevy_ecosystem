@@ -17,12 +17,13 @@
 #![deny(clippy::unwrap_used, clippy::all)]
 
 use bevy::prelude::*;
-mod map;
-use map::*;
+mod ecosystem;
+mod camera_controller;
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_plugins(Map)
+        .add_plugins(ecosystem::EcosystemPlugin)
+        .add_plugins(camera_controller::CameraControllerPlugin)
         .run();
 }
