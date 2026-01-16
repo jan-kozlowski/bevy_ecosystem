@@ -1,3 +1,5 @@
+use std::ops::{Add, AddAssign, Mul};
+
 use bevy::{
     prelude::*,
     window::{CursorGrabMode, CursorOptions},
@@ -10,6 +12,10 @@ struct CameraController;
 #[derive(InputAction)]
 #[action_output(Vec2)]
 struct CameraLook;
+
+#[derive(InputAction)]
+#[action_output(Vec2)]
+struct CameraMove;
 
 #[derive(InputAction)]
 #[action_output(bool)]
@@ -25,11 +31,10 @@ impl Plugin for CameraControllerPlugin {
         app.add_plugins(EnhancedInputPlugin)
             .add_input_context::<CameraController>()
             .add_systems(Startup, setup_camera)
-            .add_observer(update_camera_view)
+            .add_observer(update_camera_rotation)
+            .add_observer(update_camera_position)
             .add_observer(grab_cursor)
             .add_observer(release_cursor);
-
-        println!("Camera controller plugin ready!");
     }
 }
 
@@ -41,6 +46,7 @@ fn setup_camera(mut commands: Commands) {
         actions!(
             CameraController[
                 (Action::<CameraLook>::new(), bindings![(Binding::mouse_motion(), Negate::all())]),
+                (Action::<CameraMove>::new(), Bindings::spawn(Cardinal::wasd_keys())),
                 (Action::<GrabCursor>::new(), bindings![MouseButton::Left]),
                 (Action::<ReleaseCursor>::new(), bindings![KeyCode::KeyG])
             ]
@@ -48,35 +54,49 @@ fn setup_camera(mut commands: Commands) {
     ));
 }
 
-fn update_camera_view(
+fn update_camera_rotation(
     camera_look: On<Fire<CameraLook>>,
     mut camera: Single<&mut Transform, With<CameraController>>,
     cursor_options: Single<&mut CursorOptions>,
+    time: Res<Time>,
 ) {
     if cursor_options.grab_mode != CursorGrabMode::Confined {
         return;
     }
 
-    let val = camera_look.value;
+    let delta_secs = time.delta_secs();
+    let sensitivity = 5.;
     let (mut yaw, mut pitch, _) = camera.rotation.to_euler(EulerRot::YXZ);
-    yaw += val.x.to_radians();
-    pitch += val.y.to_radians();
+    yaw += camera_look.value.x.to_radians() * delta_secs * sensitivity;
+    pitch += camera_look.value.y.to_radians() * delta_secs * sensitivity;
     camera.rotation = Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.);
-    println!("camera look: {:?}", val);
 }
 
-fn grab_cursor(grab_cursor: On<Complete<GrabCursor>>, cursor_options: Single<&mut CursorOptions>) {
-    let val = grab_cursor.value;
-    println!("grabbing cursor: {:?}", val);
+fn update_camera_position(
+    camera_move: On<Fire<CameraMove>>,
+    mut camera: Single<&mut Transform, With<CameraController>>,
+    cursor_options: Single<&mut CursorOptions>,
+    time: Res<Time>,
+) {
+    if cursor_options.grab_mode != CursorGrabMode::Confined {
+        return;
+    }
+
+    let movement_speed = 20.;
+    let camera_front = camera.forward().mul(camera_move.value.y);
+    let camera_right = camera.right().mul(camera_move.value.x);
+    let movement = camera_front
+        .add(camera_right)
+        .normalize()
+        .mul(movement_speed * time.delta_secs());
+    camera.translation.add_assign(movement);
+}
+
+fn grab_cursor(_: On<Complete<GrabCursor>>, cursor_options: Single<&mut CursorOptions>) {
     update_cursor(cursor_options, true);
 }
 
-fn release_cursor(
-    grab_cursor: On<Complete<ReleaseCursor>>,
-    cursor_options: Single<&mut CursorOptions>,
-) {
-    let val = grab_cursor.value;
-    println!("releasing cursor: {:?}", val);
+fn release_cursor(_: On<Complete<ReleaseCursor>>, cursor_options: Single<&mut CursorOptions>) {
     update_cursor(cursor_options, false);
 }
 
